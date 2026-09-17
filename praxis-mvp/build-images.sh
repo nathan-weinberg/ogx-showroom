@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s inherit_errexit
 
 registry="${PRAXIS_MVP_REGISTRY:-quay.io/higginsd/imagehost}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,16 +10,20 @@ source_dir="$script_dir/src"
 engine="${CONTAINER_ENGINE:-podman}"
 
 controller_ref="${CONTROLLER_REF:-refs/pull/13/head}"
-maas_ref="${MAAS_REF:-refs/pull/1490/head}"
-operator_ref="${AI_GATEWAY_OPERATOR_REF:-913b1ab11daf722f1b123750b615e2eef6fd118a}"
-praxis_ref="${PRAXIS_REF:-e5f0ee24dd8daced1cb38974007111fb1591168e}"
-extproc_ref="${PRAXIS_EXTPROC_REF:-efa73d1720bb8d391c46a373a2c0566d0ff6b43d}"
+maas_ref="${MAAS_REF:-main}"
+operator_ref="${AI_GATEWAY_OPERATOR_REF:-main}"
+praxis_ref="${PRAXIS_REF:-main}"
+extproc_ref="${PRAXIS_EXTPROC_REF:-main}"
+rebase_sources=false
 
-if (($#)); then
-  [[ "$1" == -h || "$1" == --help ]] && { printf 'Usage: %s\n' "$0"; exit 0; }
-  printf 'ERROR: unknown argument: %s\n' "$1" >&2
-  exit 2
-fi
+while (($#)); do
+  case "$1" in
+    --rebase) rebase_sources=true ;;
+    -h|--help) printf 'Usage: %s [--rebase]\n' "$0"; exit 0 ;;
+    *) printf 'ERROR: unknown argument: %s\n' "$1" >&2; exit 2 ;;
+  esac
+  shift
+done
 
 for command in git "$engine" skopeo oc jq; do
   command -v "$command" >/dev/null || { printf 'ERROR: %s is required\n' "$command" >&2; exit 1; }
@@ -30,8 +35,17 @@ checkout() {
   local repository="$1" ref="$2" directory="$3"
   git init -q "$directory"
   git -C "$directory" remote add origin "$repository"
-  git -C "$directory" fetch --quiet --depth=1 origin "$ref"
+  git -C "$directory" fetch --quiet origin "$ref"
   git -C "$directory" checkout --quiet --detach FETCH_HEAD
+}
+
+rebase_source() {
+  local directory="$1" ref="$2"
+  if [[ "$(git -C "$directory" rev-parse --is-shallow-repository)" == true ]]; then
+    git -C "$directory" fetch --quiet --unshallow origin
+  fi
+  git -C "$directory" fetch --quiet origin "$ref"
+  git -C "$directory" rebase --quiet FETCH_HEAD
 }
 
 source_revision() {
@@ -44,28 +58,17 @@ source_revision() {
 }
 
 prepare_source() {
-  local name repository ref directory seed_dir=""
+  local name repository ref directory
   name="$1"
   repository="$2"
   ref="$3"
   directory="$source_dir/$name"
-  if [[ -d "$directory/.git" ]]; then
-    source_revision "$directory"
-    return
-  fi
-  [[ ! -e "$directory" ]] || { printf 'ERROR: %s exists but is not a git checkout\n' "$directory" >&2; exit 1; }
-
-  if [[ -f "$script_dir/artifacts/images.env" ]]; then
-    seed_dir="$(
-      # shellcheck source=/dev/null
-      source "$script_dir/artifacts/images.env"
-      printf '%s' "${RUN_DIR:-}"
-    )"
-  fi
-  if [[ -n "$seed_dir" && -d "$seed_dir/src/$name/.git" ]]; then
-    cp -a "$seed_dir/src/$name" "$directory"
-  else
+  if [[ ! -d "$directory/.git" ]]; then
+    [[ ! -e "$directory" ]] || { printf 'ERROR: %s exists but is not a git checkout\n' "$directory" >&2; exit 1; }
     checkout "$repository" "$ref" "$directory"
+  fi
+  if [[ "$rebase_sources" == true ]]; then
+    rebase_source "$directory" "$ref"
   fi
   source_revision "$directory"
 }
