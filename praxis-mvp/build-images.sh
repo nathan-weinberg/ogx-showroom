@@ -2,7 +2,10 @@
 set -euo pipefail
 shopt -s inherit_errexit
 
-registry="${PRAXIS_MVP_REGISTRY:-quay.io/higginsd/imagehost}"
+registry="${PRAXIS_MVP_REGISTRY:-}"
+registry_host="${PRAXIS_MVP_REGISTRY_HOST:-quay.io}"
+registry_namespace="${PRAXIS_MVP_REGISTRY_NAMESPACE:-}"
+registry_repository="${PRAXIS_MVP_REGISTRY_REPOSITORY:-praxis-mvp}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 run_id="${PRAXIS_MVP_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 run_dir="$script_dir/artifacts/$run_id"
@@ -29,6 +32,22 @@ for command in git "$engine" skopeo oc jq; do
   command -v "$command" >/dev/null || { printf 'ERROR: %s is required\n' "$command" >&2; exit 1; }
 done
 oc whoami >/dev/null || { printf 'ERROR: log in to OpenShift first\n' >&2; exit 1; }
+
+if [[ -z "$registry" ]]; then
+  if [[ -z "$registry_namespace" ]]; then
+    registry_namespace="$(skopeo login --get-login "$registry_host" 2>/dev/null || true)"
+  fi
+  if [[ -z "$registry_namespace" ]]; then
+    printf 'ERROR: cannot tell which %s namespace to push to\n' "$registry_host" >&2
+    printf 'Run "%s login %s", or set PRAXIS_MVP_REGISTRY_NAMESPACE or PRAXIS_MVP_REGISTRY\n' \
+      "$engine" "$registry_host" >&2
+    exit 1
+  fi
+  registry="$registry_host/$registry_namespace/$registry_repository"
+fi
+[[ "$registry" != *:* || "$registry" == *:*/* ]] || { printf 'ERROR: PRAXIS_MVP_REGISTRY must be a repository without a tag: %s\n' "$registry" >&2; exit 1; }
+printf 'Pushing images to %s\n' "$registry" >&2
+
 mkdir -p "$run_dir/src" "$source_dir"
 
 checkout() {
