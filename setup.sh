@@ -31,6 +31,18 @@ SHOWROOM_OPERATOR_IMAGE="$(read_yaml cluster.operatorImage)"
 SHOWROOM_CATALOG_IMAGE="${SHOWROOM_CATALOG_IMAGE:-quay.io/rhoai/rhoai-fbc-fragment:rhoai-3.6-ea.2}"
 SHOWROOM_OPERATOR_CHANNEL="${SHOWROOM_OPERATOR_CHANNEL:-beta}"
 
+# Warn if the catalog image is not one known to include Praxis
+case "${SHOWROOM_CATALOG_IMAGE}" in
+  quay.io/rhoai/rhoai-fbc-fragment:rhoai-3.6-ea.2|quay.io/rhoai/rhoai-fbc-fragment:rhoai-3.6)
+    ;;
+  *)
+    echo "WARNING: cluster.catalogImage is set to ${SHOWROOM_CATALOG_IMAGE}" >&2
+    echo "WARNING: Users intending to deploy with Praxis should be using the" >&2
+    echo "WARNING: quay.io/rhoai/rhoai-fbc-fragment:rhoai-3.6-ea.2 catalog image or later." >&2
+    echo "" >&2
+    ;;
+esac
+
 # Validate dependencies
 if ! command -v jq &> /dev/null; then
     echo "ERROR: jq is required but not installed"
