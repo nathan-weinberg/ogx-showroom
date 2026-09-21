@@ -75,7 +75,7 @@ prepare_source() {
 
 build_push() {
   local name="$1" revision="$2" context="$3" containerfile="$4"
-  printf "Building %s\n" $name
+  printf "Building %s\n" $name >&2
   local image="$registry:${name}-${revision:0:12}-${run_id}" digest
   if skopeo inspect "docker://$image" >/dev/null 2>&1; then
     printf 'ERROR: refusing pre-existing destination %s\n' "$image" >&2
