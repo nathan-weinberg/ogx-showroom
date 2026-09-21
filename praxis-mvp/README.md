@@ -8,6 +8,7 @@ For a cold run, use `cleanup-all.sh`, then reinstall with `./setup.sh` and
 
 ```bash
 export LITEMAAS_API_KEY="$(ls-secrets LITEMAAS_API_KEY)"
+podman login quay.io
 ./praxis-mvp/build-images.sh
 ./praxis-mvp/create-workload.sh
 ./praxis-mvp/test.sh
@@ -19,6 +20,17 @@ operator, and Praxis images. It also checks out the AI Gateway operator for the
 manifests applied by `create-workload.sh`. Override a source revision with
 `CONTROLLER_REF`, `MAAS_REF`, `AI_GATEWAY_OPERATOR_REF`,
 `OGX_K8S_OPERATOR_REF`, or `PRAXIS_REF`.
+
+Images go to your own registry namespace: by default
+`quay.io/<your quay login>/praxis-mvp`, using the account you logged in to with
+`podman login quay.io`. That repository must exist and be writable by you.
+Override the pieces with `PRAXIS_MVP_REGISTRY_HOST`,
+`PRAXIS_MVP_REGISTRY_NAMESPACE`, and `PRAXIS_MVP_REGISTRY_REPOSITORY`, or set
+the whole untagged repository at once:
+
+```bash
+PRAXIS_MVP_REGISTRY=quay.io/yourname/imagehost ./praxis-mvp/build-images.sh
+```
 
 The workload opts the default MaaS tenant into Praxis and adds a LiteMaaS
 ExternalProvider for `Qwen2.5-VL-7B-Instruct`. A second tenant is not used
