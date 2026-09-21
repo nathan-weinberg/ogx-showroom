@@ -14,10 +14,11 @@ export LITEMAAS_API_KEY="$(ls-secrets LITEMAAS_API_KEY)"
 ```
 
 `build-images.sh` always uses unique Quay tags and refuses a tag that already
-exists. It builds controller PR 13, MaaS PR 1490, and their pinned operator,
-Praxis, and ExtProc dependencies. Override a source revision with
-`CONTROLLER_REF`, `MAAS_REF`, `AI_GATEWAY_OPERATOR_REF`, `PRAXIS_REF`, or
-`PRAXIS_EXTPROC_REF`.
+exists. It builds the AI Gateway controller, MaaS controller, OGX Kubernetes
+operator, and Praxis images. It also checks out the AI Gateway operator for the
+manifests applied by `create-workload.sh`. Override a source revision with
+`CONTROLLER_REF`, `MAAS_REF`, `AI_GATEWAY_OPERATOR_REF`,
+`OGX_K8S_OPERATOR_REF`, or `PRAXIS_REF`.
 
 The workload opts the default MaaS tenant into Praxis and adds a LiteMaaS
 ExternalProvider for `Qwen2.5-VL-7B-Instruct`. A second tenant is not used

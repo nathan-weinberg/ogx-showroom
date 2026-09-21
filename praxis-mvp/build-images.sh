@@ -9,11 +9,11 @@ run_dir="$script_dir/artifacts/$run_id"
 source_dir="$script_dir/src"
 engine="${CONTAINER_ENGINE:-podman}"
 
-controller_ref="${CONTROLLER_REF:-refs/pull/13/head}"
+controller_ref="${CONTROLLER_REF:-main}"
 maas_ref="${MAAS_REF:-main}"
 operator_ref="${AI_GATEWAY_OPERATOR_REF:-main}"
+ogx_operator_ref="${OGX_K8S_OPERATOR_REF:-main}"
 praxis_ref="${PRAXIS_REF:-main}"
-extproc_ref="${PRAXIS_EXTPROC_REF:-main}"
 rebase_sources=false
 
 while (($#)); do
@@ -75,6 +75,7 @@ prepare_source() {
 
 build_push() {
   local name="$1" revision="$2" context="$3" containerfile="$4"
+  printf "Building %s\n" $name
   local image="$registry:${name}-${revision:0:12}-${run_id}" digest
   if skopeo inspect "docker://$image" >/dev/null 2>&1; then
     printf 'ERROR: refusing pre-existing destination %s\n' "$image" >&2
@@ -90,9 +91,9 @@ build_push() {
 
 controller_sha="$(prepare_source controller https://github.com/opendatahub-io/ai-gateway-controller.git "$controller_ref")"
 maas_sha="$(prepare_source maas https://github.com/opendatahub-io/models-as-a-service.git "$maas_ref")"
-operator_sha="$(prepare_source operator https://github.com/opendatahub-io/ai-gateway-operator.git "$operator_ref")"
+prepare_source operator https://github.com/opendatahub-io/ai-gateway-operator.git "$operator_ref" >/dev/null
+ogx_operator_sha="$(prepare_source ogx-operator https://github.com/red-hat-data-services/ogx-k8s-operator.git "$ogx_operator_ref")"
 praxis_sha="$(prepare_source praxis https://github.com/praxis-proxy/ai.git "$praxis_ref")"
-extproc_sha="$(prepare_source extproc https://github.com/opendatahub-io/praxis-extproc.git "$extproc_ref")"
 
 if [[ "${PRAXIS_MVP_PREPARE_SOURCES_ONLY:-false}" == true ]]; then
   printf 'Persistent sources are ready in %s\n' "$source_dir"
@@ -101,11 +102,10 @@ fi
 
 controller_image="$(build_push ai-gateway-controller "$controller_sha" "$source_dir/controller" "$source_dir/controller/Dockerfile")"
 maas_image="$(build_push maas-controller "$maas_sha" "$source_dir/maas" "$source_dir/maas/maas-controller/Dockerfile")"
-operator_image="$(build_push ai-gateway-operator "$operator_sha" "$source_dir/operator" "$source_dir/operator/Containerfile")"
+ogx_operator_image="$(build_push ogx-k8s-operator "$ogx_operator_sha" "$source_dir/ogx-operator" "$source_dir/ogx-operator/Dockerfile")"
 praxis_image="$(build_push praxis-ai "$praxis_sha" "$source_dir/praxis" "$source_dir/praxis/Containerfile")"
-extproc_image="$(build_push praxis-extproc "$extproc_sha" "$source_dir/extproc" "$source_dir/extproc/Containerfile")"
 
-for name in controller maas operator praxis extproc; do
+for name in controller maas operator ogx-operator praxis ; do
   cp -a "$source_dir/$name" "$run_dir/src/$name"
 done
 
@@ -116,12 +116,10 @@ CONTROLLER_SHA=$controller_sha
 CONTROLLER_IMAGE=$controller_image
 MAAS_SHA=$maas_sha
 MAAS_IMAGE=$maas_image
-AI_GATEWAY_OPERATOR_SHA=$operator_sha
-AI_GATEWAY_OPERATOR_IMAGE=$operator_image
+OGX_K8S_OPERATOR_SHA=$ogx_operator_sha
+OGX_K8S_OPERATOR_IMAGE=$ogx_operator_image
 PRAXIS_SHA=$praxis_sha
 PRAXIS_IMAGE=$praxis_image
-PRAXIS_EXTPROC_SHA=$extproc_sha
-PRAXIS_EXTPROC_IMAGE=$extproc_image
 EOF
 cp "$run_dir/images.env" "$script_dir/artifacts/images.env"
 
@@ -139,23 +137,6 @@ spec:
   background: false
   failurePolicy: Fail
   rules:
-  - name: ai-gateway-operator
-    match: {any: [{resources: {kinds: [Pod], selector: {matchLabels: {app.kubernetes.io/name: ai-gateway-operator}}}}]}
-    mutate:
-      foreach:
-      - list: request.object.spec.containers
-        preconditions: {all: [{key: "{{ element.image }}", operator: AnyIn, value: ["*odh-ai-gateway-operator*"]}]}
-        patchStrategicMerge: {spec: {containers: [{name: "{{ element.name }}", image: "$operator_image"}]}}
-      - list: request.object.spec.initContainers
-        preconditions: {all: [{key: "{{ element.image }}", operator: AnyIn, value: ["*odh-ai-gateway-operator*"]}]}
-        patchStrategicMerge: {spec: {initContainers: [{name: "{{ element.name }}", image: "$operator_image"}]}}
-  - name: maas-controller
-    match: {any: [{resources: {kinds: [Pod]}}]}
-    mutate:
-      foreach:
-      - list: request.object.spec.containers
-        preconditions: {all: [{key: "{{ element.image }}", operator: AnyIn, value: ["*odh-maas-controller*"]}]}
-        patchStrategicMerge: {spec: {containers: [{name: "{{ element.name }}", image: "$maas_image"}]}}
   - name: ai-gateway-controller
     match: {any: [{resources: {kinds: [Pod], selector: {matchLabels: {control-plane: ai-gateway-controller}}}}]}
     mutate:
@@ -167,11 +148,26 @@ spec:
             args:
             - --leader-elect
             - --health-probe-bind-address=:8081
-            - --image=$extproc_image
             - --praxis-image=$praxis_image
             - --praxis-image-pull-policy=IfNotPresent
             - --known-cluster=provider-praxis-mvp-provider-a
             - --known-cluster=provider-praxis-mvp-provider-b
+  - name: maas-controller
+    match: {any: [{resources: {kinds: [Pod], selector: {matchLabels: {control-plane: maas-controller}}}}]}
+    mutate:
+      patchStrategicMerge:
+        spec:
+          containers:
+          - name: manager
+            image: "$maas_image"
+  - name: ogx-k8s-operator
+    match: {any: [{resources: {kinds: [Pod], selector: {matchLabels: {app.kubernetes.io/name: ogx-k8s-operator, control-plane: controller-manager}}}}]}
+    mutate:
+      patchStrategicMerge:
+        spec:
+          containers:
+          - name: manager
+            image: "$ogx_operator_image"
   - name: praxis
     match: {any: [{resources: {kinds: [Pod]}}]}
     mutate:
@@ -179,13 +175,6 @@ spec:
       - list: request.object.spec.containers
         preconditions: {all: [{key: "{{ element.image }}", operator: AnyIn, value: ["*praxis-ai*"]}]}
         patchStrategicMerge: {spec: {containers: [{name: "{{ element.name }}", image: "$praxis_image"}]}}
-  - name: praxis-extproc
-    match: {any: [{resources: {kinds: [Pod]}}]}
-    mutate:
-      foreach:
-      - list: request.object.spec.containers
-        preconditions: {all: [{key: "{{ element.image }}", operator: AnyIn, value: ["*praxis-extproc*"]}]}
-        patchStrategicMerge: {spec: {containers: [{name: "{{ element.name }}", image: "$extproc_image"}]}}
 EOF
 oc wait --for=condition=Ready clusterpolicy/praxis-mvp-image-swap --timeout=2m
 printf 'Images and Kyverno policy are ready. State: %s\n' "$run_dir/images.env"

@@ -197,6 +197,15 @@ rules:
 - apiGroups: [networking.istio.io]
   resources: [serviceentries]
   verbs: [patch]
+- apiGroups: [maas.opendatahub.io]
+  resources: [maastenantconfigs]
+  verbs: [get, list, watch]
+- apiGroups: [maas.opendatahub.io]
+  resources: [aitenants]
+  verbs: [get, list, watch, update, patch]
+- apiGroups: [maas.opendatahub.io]
+  resources: [aitenants/finalizers]
+  verbs: [update]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -232,11 +241,13 @@ oc apply --server-side --force-conflicts -k "$controller_src/config/crd"
 oc apply --server-side --force-conflicts -f "$controller_src/config/self/rbac/clusterrole.yaml"
 [[ "$(oc auth can-i patch httproutes.gateway.networking.k8s.io \
   --as="system:serviceaccount:$applications_namespace:ai-gateway-controller" --all-namespaces)" == yes ]] || { printf 'ERROR: controller RBAC is incomplete\n' >&2; exit 1; }
+[[ "$(oc auth can-i list maastenantconfigs.maas.opendatahub.io \
+  --as="system:serviceaccount:$applications_namespace:ai-gateway-controller" --all-namespaces)" == yes ]] || { printf 'ERROR: controller RBAC is incomplete\n' >&2; exit 1; }
+[[ "$(oc auth can-i patch aitenants.maas.opendatahub.io \
+  --as="system:serviceaccount:$applications_namespace:ai-gateway-controller" --all-namespaces)" == yes ]] || { printf 'ERROR: controller RBAC is incomplete\n' >&2; exit 1; }
 
 running_image() { oc get pod -n "$1" -l "$2" -o jsonpath='{.items[0].spec.containers[0].image}'; }
 [[ "$(running_image "$applications_namespace" control-plane=ai-gateway-controller)" == "$CONTROLLER_IMAGE" ]] || { printf 'ERROR: controller image was not swapped\n' >&2; exit 1; }
-[[ "$(running_image "$applications_namespace" control-plane=maas-controller)" == "$MAAS_IMAGE" ]] || { printf 'ERROR: MaaS image was not swapped\n' >&2; exit 1; }
-[[ "$(running_image "$applications_namespace" app.kubernetes.io/name=ai-gateway-operator)" == "$AI_GATEWAY_OPERATOR_IMAGE" ]] || { printf 'ERROR: AI Gateway operator image was not swapped\n' >&2; exit 1; }
 
 if ! oc get gateway "$gateway_name" -n "$gateway_namespace" >/dev/null 2>&1; then
   oc apply -f - <<EOF

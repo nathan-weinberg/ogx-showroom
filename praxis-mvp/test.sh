@@ -12,7 +12,6 @@ source "$state_file"
 # shellcheck disable=SC1090
 source "$images_file"
 : "${PRAXIS_IMAGE:?images file is missing PRAXIS_IMAGE}"
-: "${PRAXIS_EXTPROC_IMAGE:?images file is missing PRAXIS_EXTPROC_IMAGE}"
 : "${MODEL_NAME:?workload file is missing MODEL_NAME}"
 : "${PROVIDER_MODEL:?workload file is missing PROVIDER_MODEL}"
 
@@ -29,7 +28,6 @@ wait_for 'ExternalModel' "test \"\$(oc get externalmodel praxis-mvp-demo -n '$TE
 wait_for 'Praxis' "oc get deployment -n '$TENANT_NAMESPACE' -l app=praxis -o json | jq -e '.items[0].status.availableReplicas == 1'"
 praxis_image="$(oc get pod -n "$TENANT_NAMESPACE" -l app=praxis -o jsonpath='{.items[0].spec.containers[0].image}')"
 [[ "$praxis_image" == "$PRAXIS_IMAGE" ]] || { printf 'ERROR: Praxis runs %s, expected %s\n' "$praxis_image" "$PRAXIS_IMAGE" >&2; exit 1; }
-oc get pods -n "$GATEWAY_NAMESPACE" -l app=payload-processing -o json | jq -e --arg image "$PRAXIS_EXTPROC_IMAGE" '[.items[].spec.containers[].image] | any(. == $image)' >/dev/null || { printf 'ERROR: custom Praxis ExtProc image is not running for the MaaS Gateway\n' >&2; exit 1; }
 wait_for 'MaaSSubscription' "test \"\$(oc get maassubscription praxis-mvp -n '$TENANT_NAMESPACE' -o jsonpath='{.status.phase}')\" = Active"
 
 host="$(oc get gateway "$GATEWAY_NAME" -n "$GATEWAY_NAMESPACE" -o jsonpath='{.status.addresses[0].value}')"
@@ -65,6 +63,7 @@ request() {
 
 status="$(request)"
 [[ "$status" == 200 ]] || { printf 'ERROR: gateway request returned HTTP %s\n' "$status" >&2; exit 1; }
+cat "$tmp_dir/response.json"
 jq -e --arg model "$PROVIDER_MODEL" '.model | contains($model)' "$tmp_dir/response.json" >/dev/null || { printf 'ERROR: response did not use the LiteMaaS Qwen model\n' >&2; exit 1; }
 
 missing_status="$(curl -ksS --max-time 30 -o /dev/null -w '%{http_code}' -H @"$tmp_dir/key-header" \
