@@ -53,7 +53,7 @@ ogx:
     otlpEndpoint: "http://otel-collector:4318"
 
 # ============================================================
-# Cluster setup (used by setup-cluster.sh)
+# Cluster setup (used by setup.sh)
 # ============================================================
 cluster:
   # REQUIRED: base64-encoded quay.io credentials
@@ -64,7 +64,7 @@ cluster:
   pullSecret: ""
 
   # Optional overrides (defaults are usually fine)
-  catalogImage: ""           # default: quay.io/rhoai/rhoai-fbc-fragment:rhoai-3.5-ea.1
+  catalogImage: ""           # default: quay.io/rhoai/rhoai-fbc-fragment:rhoai-3.6-ea.2
   operatorChannel: ""        # default: beta
   ogxImage: ""               # custom OGX image (for testing)
   operatorImage: ""          # custom operator image (for testing)
