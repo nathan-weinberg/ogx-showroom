@@ -22,3 +22,6 @@ demos/notebooks/.venv-rag/
 *.swp
 *.swo
 *~
+
+# praxis-mvp
+praxis-mvp/
